@@ -1,11 +1,28 @@
 import time
+
+from triton.interpreter.interpreter import torch
+
 from options.train_options import TrainOptions
 from data import CreateDataLoader
 from models import create_model
-from util.visualizer import Visualizer
+
+# from util.visualizer import Visualizer
 import numpy as np, h5py
-from skimage.measure import compare_psnr as psnr
+from skimage.metrics import peak_signal_noise_ratio as psnr  # newer version
 import os
+
+import sys
+
+sys.path.append("..")
+
+from flairsyn.lib.datasets import create_loaders
+from omegaconf import OmegaConf
+
+data_conf = OmegaConf.load("../flairsyn/configs/sr3/defaults.yml")["data"]
+data_conf["img_size"] = (256, 256)
+
+guidance_seqs = ["t1", "t2"]
+target_seq = "flair"
 
 
 def print_log(logger, message):
@@ -16,30 +33,24 @@ def print_log(logger, message):
 
 if __name__ == "__main__":
     opt = TrainOptions().parse()
-    # Training data
-    data_loader = CreateDataLoader(opt)
-    dataset = data_loader.load_data()
-    dataset_size = len(data_loader)
-    print("#training images = %d" % dataset_size)
+    data_conf["batch_size"] = opt.batchSize
+
+    train_loader, val_loader = create_loaders(**data_conf)
+
     ##logger ##
     save_dir = os.path.join(opt.checkpoints_dir, opt.name)
     logger = open(os.path.join(save_dir, "log.txt"), "w+")
     print_log(logger, opt.name)
     logger.close()
-    # validation data
-    opt.phase = "val"
-    data_loader_val = CreateDataLoader(opt)
-    dataset_val = data_loader_val.load_data()
-    dataset_size_val = len(data_loader_val)
-    print("#Validation images = %d" % dataset_size)
+
     if opt.model == "cycle_gan":
-        L1_avg = np.zeros([2, opt.niter + opt.niter_decay, len(dataset_val)])
-        psnr_avg = np.zeros([2, opt.niter + opt.niter_decay, len(dataset_val)])
+        L1_avg = np.zeros([2, opt.niter + opt.niter_decay, len(val_loader)])
+        psnr_avg = np.zeros([2, opt.niter + opt.niter_decay, len(train_loader)])
     else:
-        L1_avg = np.zeros([opt.niter + opt.niter_decay, len(dataset_val)])
-        psnr_avg = np.zeros([opt.niter + opt.niter_decay, len(dataset_val)])
+        L1_avg = np.zeros([opt.niter + opt.niter_decay, len(val_loader)])
+        psnr_avg = np.zeros([opt.niter + opt.niter_decay, len(val_loader)])
     model = create_model(opt)
-    visualizer = Visualizer(opt)
+    # visualizer = Visualizer(opt)
     total_steps = 0
 
     for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
@@ -48,52 +59,34 @@ if __name__ == "__main__":
         epoch_iter = 0
         # Training step
         opt.phase = "train"
-        for i, data in enumerate(dataset):
-            iter_start_time = time.time()
-            if total_steps % opt.print_freq == 0:
-                t_data = iter_start_time - iter_data_time
-            visualizer.reset()
-            total_steps += opt.batchSize
-            epoch_iter += opt.batchSize
-            model.set_input(data)
-            model.optimize_parameters()
+        for _ in range(150):  # ~150 axial slices per volume
+            for batch in enumerate(train_loader):
+                iter_start_time = time.time()
+                if total_steps % opt.print_freq == 0:
+                    t_data = iter_start_time - iter_data_time
+                # visualizer.reset()
+                total_steps += opt.batchSize  # Note that this already accounts for bs
+                epoch_iter += opt.batchSize
 
-            if total_steps % opt.display_freq == 0:
-                save_result = total_steps % opt.update_html_freq == 0
-                if opt.dataset_mode == "aligned_mat":
-                    temp_visuals = model.get_current_visuals()
-                    visualizer.display_current_results(temp_visuals, epoch, save_result)
-                elif opt.dataset_mode == "unaligned_mat":
-                    temp_visuals = model.get_current_visuals()
-                    temp_visuals["real_A"] = temp_visuals["real_A"][:, :, 0:3]
-                    temp_visuals["real_B"] = temp_visuals["real_B"][:, :, 0:3]
-                    temp_visuals["fake_A"] = temp_visuals["fake_A"][:, :, 0:3]
-                    temp_visuals["fake_B"] = temp_visuals["fake_B"][:, :, 0:3]
-                    temp_visuals["rec_A"] = temp_visuals["rec_A"][:, :, 0:3]
-                    temp_visuals["rec_B"] = temp_visuals["rec_B"][:, :, 0:3]
-                    if opt.lambda_identity > 0:
-                        temp_visuals["idt_A"] = temp_visuals["idt_A"][:, :, 0:3]
-                        temp_visuals["idt_B"] = temp_visuals["idt_B"][:, :, 0:3]
-                    visualizer.display_current_results(temp_visuals, epoch, save_result)
-                else:
-                    temp_visuals = model.get_current_visuals()
-                    visualizer.display_current_results(temp_visuals, epoch, save_result)
+                data = {
+                    "A": torch.concat(
+                        [batch[seq] for seq in guidance_seqs], dim=1
+                    ).float(),
+                    "B": batch[target_seq].float(),
+                }
 
-            if total_steps % opt.print_freq == 0:
-                errors = model.get_current_errors()
-                t = (time.time() - iter_start_time) / opt.batchSize
-                visualizer.print_current_errors(epoch, epoch_iter, errors, t, t_data)
-                if opt.display_id > 0:
-                    visualizer.plot_current_errors(
-                        epoch, float(epoch_iter) / dataset_size, opt, errors
+                model.set_input(data)
+                model.optimize_parameters()
+
+                if total_steps % opt.print_freq == 0:
+                    errors = model.get_current_errors()
+
+                if total_steps % opt.save_latest_freq == 0:
+                    print(
+                        "saving the latest model (epoch %d, total_steps %d)"
+                        % (epoch, total_steps)
                     )
-
-            if total_steps % opt.save_latest_freq == 0:
-                print(
-                    "saving the latest model (epoch %d, total_steps %d)"
-                    % (epoch, total_steps)
-                )
-                model.save("latest")
+                    model.save("latest")
 
             iter_data_time = time.time()
         # Validaiton step
@@ -101,9 +94,16 @@ if __name__ == "__main__":
             logger = open(os.path.join(save_dir, "log.txt"), "a")
             print(opt.dataset_mode)
             opt.phase = "val"
-            for i, data_val in enumerate(dataset_val):
+            for i, val_batch in enumerate(val_loader):
                 #
-                model.set_input(data_val)
+                data = {
+                    "A": torch.concat(
+                        [val_batch[seq] for seq in guidance_seqs], dim=1
+                    ).float(),
+                    "B": batch[target_seq].float(),
+                }
+
+                model.set_input(data)
                 #
                 model.test()
                 #

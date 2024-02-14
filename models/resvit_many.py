@@ -90,7 +90,7 @@ class ResViT_model(BaseModel):
             input_B = input_B.cuda(self.gpu_ids[0])
         self.input_A = input_A
         self.input_B = input_B
-        self.image_paths = input["A_paths" if AtoB else "B_paths"]
+        # self.image_paths = input["A_paths" if AtoB else "B_paths"]
 
     def forward(self):
         self.real_A = Variable(self.input_A)
