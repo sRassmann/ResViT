@@ -15,6 +15,7 @@ class ResViT_model(BaseModel):
     def initialize(self, opt):
         BaseModel.initialize(self, opt)
         self.isTrain = opt.isTrain
+        load_net = not self.isTrain or opt.continue_train
 
         # load/define networks
         self.netG = networks.define_G(
@@ -29,8 +30,8 @@ class ResViT_model(BaseModel):
             not opt.no_dropout,
             opt.init_type,
             self.gpu_ids,
-            pre_trained_trans=opt.pre_trained_transformer,
-            pre_trained_resnet=opt.pre_trained_resnet,
+            pre_trained_trans=opt.pre_trained_transformer and not load_net,
+            pre_trained_resnet=opt.pre_trained_resnet and not load_net,
         )
 
         if self.isTrain:
@@ -48,7 +49,7 @@ class ResViT_model(BaseModel):
                 opt.init_type,
                 self.gpu_ids,
             )
-        if not self.isTrain or opt.continue_train:
+        if load_net:
             self.load_network(self.netG, "G", opt.which_epoch)
             if self.isTrain:
                 self.load_network(self.netD, "D", opt.which_epoch)

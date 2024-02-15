@@ -28,4 +28,17 @@ class TestOptions(BaseOptions):
         self.parser.add_argument(
             "--how_many", type=int, default=50, help="how many test images to run"
         )
+        self.parser.add_argument(
+            "--dataset_json",
+            type=str,
+            default="../data/RS/RS_train_split.json",
+            help="path to the dataset json file",
+        )
+        self.parser.add_argument(
+            "--data_dir",
+            type=str,
+            default="../data/RS/conformed_mask_reg",
+            help="path to the dataset directory",
+        )
+
         self.isTrain = False

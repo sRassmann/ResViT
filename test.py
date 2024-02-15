@@ -1,56 +1,79 @@
 import os
+
+import torch
+
 from options.test_options import TestOptions
-from data import CreateDataLoader
 from models import create_model
-from util.visualizer import Visualizer
-from util import html
 
+import sys
 
-if __name__ == '__main__':
+sys.path.append("..")
+
+from flairsyn.lib.datasets import get_datasets
+from flairsyn.lib.inference import save_output_volume
+from omegaconf import OmegaConf
+from tqdm import tqdm
+
+config = OmegaConf.load("defaults.yml")
+guidance_seqs = ["t1", "t2"]
+target_seq = "flair"
+
+if __name__ == "__main__":
     opt = TestOptions().parse()
-    opt.nThreads = 1   # test code only supports nThreads = 1
-    opt.batchSize = 1  # test code only supports batchSize = 1
-    opt.serial_batches = True  # no shuffle
-    opt.no_flip = True  # no flip
+    # opt.nThreads = 1   # test code only supports nThreads = 1
+    # opt.batchSize = 1  # test code only supports batchSize = 1
+    # opt.serial_batches = True  # no shuffle
+    # opt.no_flip = True  # no flip
 
-    data_loader = CreateDataLoader(opt)
-    dataset = data_loader.load_data()
+    output_dir = os.path.join(opt.checkpoints_dir, opt.name, "inference")
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Saving predictions to: {output_dir}")
+
+    _, val = get_datasets(
+        dataset=opt.dataset_json,
+        data_dir=opt.data_dir,
+        relevant_sequences=config.data.guidance_sequences
+        + [config.data.target_sequence],
+        size=None,
+        cache=None,
+        subset_train=0,
+        normalize_to=(-1, 1),
+        skull_strip=1,
+    )
+
     model = create_model(opt)
-    visualizer = Visualizer(opt)
-    # create website
-    web_dir = os.path.join(opt.results_dir, opt.name, '%s_%s' % (opt.phase, opt.which_epoch))
-    webpage = html.HTML(web_dir, 'Experiment = %s, Phase = %s, Epoch = %s' % (opt.name, opt.phase, opt.which_epoch))
-    # test
-    for i, data in enumerate(dataset):
-        if i >= opt.how_many:
-            break
-        model.set_input(data)
-        model.test()
-        
-        if opt.dataset_mode=='aligned_mat':
-            visuals=model.get_current_visuals()
-            #visuals['real_A']=visuals['real_A'][:,:,0:3]
-            #visuals['real_B']=visuals['real_B'][:,:,0:3]
-            #visuals['fake_B']=visuals['fake_B'][:,:,0:3]    
-            img_path = model.get_image_paths()
-            img_path[0]=img_path[0]+str(i)
-        elif  opt.dataset_mode=='unaligned_mat':   
-            visuals=model.get_current_visuals()
-            slice_select=[opt.input_nc/2,opt.input_nc/2,opt.input_nc/2]
-            visuals['real_A']=visuals['real_A'][:,:,slice_select]
-            visuals['real_B']=visuals['real_B'][:,:,slice_select]
-            visuals['fake_A']=visuals['fake_A'][:,:,slice_select]
-            visuals['fake_B']=visuals['fake_B'][:,:,slice_select]
-            visuals['rec_A']=visuals['rec_A'][:,:,slice_select]
-            visuals['rec_B']=visuals['rec_B'][:,:,slice_select]
-            #temp_visuals['idt_A']=temp_visuals['idt_A'][:,:,slice_select]
-            #temp_visuals['idt_B']=temp_visuals['idt_B'][:,:,slice_select]                    
-            img_path = model.get_image_paths()
-            img_path[0]=img_path[0]+str(i)            
-        else:
-            visuals = model.get_current_visuals()
-            img_path = model.get_image_paths()
-        print('%04d: process image... %s' % (i, img_path))
-        visualizer.save_images(webpage, visuals, img_path, aspect_ratio=opt.aspect_ratio)
 
-    webpage.save()
+    # test
+    for i, vol in enumerate(tqdm(val)):
+        pred_vol = torch.zeros_like(vol[target_seq])
+        guidance = torch.cat([vol[seq] for seq in guidance_seqs], dim=0).float()
+        guidance = guidance.permute(1, 0, 2, 3)
+
+        for j in range(0, vol[target_seq].shape[1], opt.batchSize):
+            g = guidance[j : j + opt.batchSize]
+            b, c, h, w = g.shape
+
+            # pad to batch size, 2, 256, 256
+            pad = -torch.ones([b, c, 256, 256])
+            offset_h = (256 - h) // 2
+            offset_w = (256 - w) // 2
+            pad[:, :, offset_h : offset_h + h, offset_w : offset_w + w] = g
+
+            data = {
+                "A": pad,
+                "B": pad[:, :1, :, :],  # dummy
+            }
+            model.set_input(data)
+            model.test()
+            pred_vol[0, j : j + opt.batchSize] = model.fake_B[
+                :, 0, offset_h : offset_h + h, offset_w : offset_w + w
+            ].cpu()
+
+        vol["pred"] = torch.clamp(pred_vol, -1, 1)
+        save_output_volume(
+            vol,
+            output_path=output_dir,
+            save_keys=list(config.data.guidance_sequences)
+            + ["pred", config.data.target_sequence, "mask"],
+            target_sequence=config.data.target_sequence,
+        )
