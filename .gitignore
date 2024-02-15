@@ -75,3 +75,4 @@ configs/runs/*
 bash/runs/*
 
 checkpoints/*
+model/*

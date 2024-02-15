@@ -38,7 +38,6 @@ if __name__ == "__main__":
     data_conf["batch_size"] = opt.batchSize
 
     train_loader, val_loader = create_loaders(**data_conf)
-    fixed_val_batch = next(iter(val_loader))
 
     ##logger ##
     save_dir = os.path.join(opt.checkpoints_dir, opt.name)
@@ -59,6 +58,7 @@ if __name__ == "__main__":
     model = create_model(opt)
     # visualizer = Visualizer(opt)
     total_steps = 0
+    fixed_val_batch = next(iter(val_loader))
 
     for epoch in range(opt.epoch_count, (opt.niter + opt.niter_decay + 1)):
         epoch_start_time = time.time()
