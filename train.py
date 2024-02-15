@@ -3,11 +3,9 @@ import time
 from triton.interpreter.interpreter import torch
 
 from options.train_options import TrainOptions
-from data import CreateDataLoader
 from models import create_model
-
-# from util.visualizer import Visualizer
-import numpy as np, h5py
+import numpy as np
+from image_similarity_measures.quality_metrics import ssim
 from skimage.metrics import peak_signal_noise_ratio as psnr  # newer version
 import os
 
@@ -40,6 +38,7 @@ if __name__ == "__main__":
     data_conf["batch_size"] = opt.batchSize
 
     train_loader, val_loader = create_loaders(**data_conf)
+    fixed_val_batch = next(iter(val_loader))
 
     ##logger ##
     save_dir = os.path.join(opt.checkpoints_dir, opt.name)
@@ -52,9 +51,11 @@ if __name__ == "__main__":
     if opt.model == "cycle_gan":
         L1_avg = np.zeros([2, opt.niter + opt.niter_decay, len(val_loader)])
         psnr_avg = np.zeros([2, opt.niter + opt.niter_decay, len(train_loader)])
+        ssim_avg = np.zeros([2, opt.niter + opt.niter_decay, len(train_loader)])
     else:
         L1_avg = np.zeros([opt.niter + opt.niter_decay, len(val_loader)])
         psnr_avg = np.zeros([opt.niter + opt.niter_decay, len(val_loader)])
+        ssim_avg = np.zeros([opt.niter + opt.niter_decay, len(val_loader)])
     model = create_model(opt)
     # visualizer = Visualizer(opt)
     total_steps = 0
@@ -90,9 +91,18 @@ if __name__ == "__main__":
 
             iter_data_time = time.time()
         # Validaiton step
-
-        ex_images = []
         if epoch % opt.save_epoch_freq == 0:
+            data = {
+                "A": torch.concat(
+                    [fixed_val_batch[seq] for seq in guidance_seqs], dim=1
+                ).float(),
+                "B": fixed_val_batch[target_seq].float(),
+            }
+
+            model.set_input(data)
+            model.test()
+            save_grid(model.fake_B, os.path.join(save_dir, f"val_{epoch:04d}.png"), 4)
+
             logger = open(os.path.join(save_dir, "log.txt"), "a")
             opt.phase = "val"
             for i, val_batch in enumerate(val_loader):
@@ -101,7 +111,7 @@ if __name__ == "__main__":
                     "A": torch.concat(
                         [val_batch[seq] for seq in guidance_seqs], dim=1
                     ).float(),
-                    "B": batch[target_seq].float(),
+                    "B": val_batch[target_seq].float(),
                 }
 
                 model.set_input(data)
@@ -109,33 +119,24 @@ if __name__ == "__main__":
                 model.test()
                 #
                 fake_im = model.fake_B.cpu().data.numpy()
-                #
                 real_im = model.real_B.cpu().data.numpy()
-                #
                 real_im = real_im * 0.5 + 0.5
-                #
                 fake_im = fake_im * 0.5 + 0.5
+                real_im = real_im / real_im.max()
+                fake_im = fake_im / fake_im.max()
                 if real_im.max() <= 0:
                     continue
                 L1_avg[epoch - 1, i] = abs(fake_im - real_im).mean()
-                psnr_avg[epoch - 1, i] = psnr(
-                    fake_im / fake_im.max(), real_im / real_im.max()
-                )
-                if i < 8:
-                    ex_images.append(fake_im)
-            #
-            #
+                psnr_avg[epoch - 1, i] = psnr(real_im, fake_im, data_range=1)
+                ssim_avg[epoch - 1, i] = ssim(real_im[:, 0], fake_im[:, 0], max_p=1)
+
             l1_avg_loss = np.mean(L1_avg[epoch - 1])
-            #
             mean_psnr = np.mean(psnr_avg[epoch - 1])
-            #
             std_psnr = np.std(psnr_avg[epoch - 1])
 
             writer.add_scalar("L1_val", l1_avg_loss, epoch)
             writer.add_scalar("PSNR", mean_psnr, epoch)
-
-            image = torch.from_numpy(fake_im)
-            save_grid(image, os.path.join(save_dir, f"val_{epoch:04d}.png"), 4)
+            writer.add_scalar("SSIM", np.mean(ssim_avg[epoch - 1]), epoch)
 
             #
             # print_log(
