@@ -1,5 +1,7 @@
 import argparse
 import os
+import time
+
 from util import util
 import torch
 
@@ -65,10 +67,11 @@ class BaseOptions:
             default="0",
             help="gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU",
         )
+        today = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
         self.parser.add_argument(
             "--name",
             type=str,
-            default="experiment_name",
+            default=f"experiment_name_{today}",
             help="name of the experiment. It decides where to store samples and models",
         )
         self.parser.add_argument(

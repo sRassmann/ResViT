@@ -11,15 +11,23 @@ import numpy as np, h5py
 from skimage.metrics import peak_signal_noise_ratio as psnr  # newer version
 import os
 
+from torch.utils.tensorboard import SummaryWriter
+
+torch.multiprocessing.set_sharing_strategy("file_system")
+
 import sys
 
 sys.path.append("..")
 
 from flairsyn.lib.datasets import create_loaders
+from flairsyn.lib.utils.visualization import save_grid
 from omegaconf import OmegaConf
+from tqdm import tqdm
 
 data_conf = OmegaConf.load("../flairsyn/configs/sr3/defaults.yml")["data"]
 data_conf["img_size"] = (256, 256)
+data_conf["skull_strip"] = True
+data_conf["num_workers"] = 24
 
 guidance_seqs = ["t1", "t2"]
 target_seq = "flair"
@@ -43,6 +51,8 @@ if __name__ == "__main__":
     print_log(logger, opt.name)
     logger.close()
 
+    writer = SummaryWriter(log_dir=os.path.join(save_dir, "tb"))
+
     if opt.model == "cycle_gan":
         L1_avg = np.zeros([2, opt.niter + opt.niter_decay, len(val_loader)])
         psnr_avg = np.zeros([2, opt.niter + opt.niter_decay, len(train_loader)])
@@ -53,46 +63,41 @@ if __name__ == "__main__":
     # visualizer = Visualizer(opt)
     total_steps = 0
 
-    for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
+    for epoch in range(opt.epoch_count, (opt.niter + opt.niter_decay + 1)):
         epoch_start_time = time.time()
         iter_data_time = time.time()
         epoch_iter = 0
         # Training step
-        opt.phase = "train"
-        for _ in range(150):  # ~150 axial slices per volume
-            for batch in enumerate(train_loader):
-                iter_start_time = time.time()
-                if total_steps % opt.print_freq == 0:
-                    t_data = iter_start_time - iter_data_time
-                # visualizer.reset()
-                total_steps += opt.batchSize  # Note that this already accounts for bs
-                epoch_iter += opt.batchSize
+        opt.phase = "train"  # ~150 axial slices per volume
+        for i, batch in enumerate(tqdm(train_loader)):
+            iter_start_time = time.time()
+            if total_steps % opt.print_freq == 0:
+                t_data = iter_start_time - iter_data_time
+            # visualizer.reset()
+            total_steps += opt.batchSize  # Note that this already accounts for bs
+            epoch_iter += opt.batchSize
 
-                data = {
-                    "A": torch.concat(
-                        [batch[seq] for seq in guidance_seqs], dim=1
-                    ).float(),
-                    "B": batch[target_seq].float(),
-                }
+            data = {
+                "A": torch.concat([batch[seq] for seq in guidance_seqs], dim=1)
+                .float()
+                .contiguous(),
+                "B": batch[target_seq].float().contiguous(),
+            }
 
-                model.set_input(data)
-                model.optimize_parameters()
+            model.set_input(data)
+            model.optimize_parameters()
 
-                if total_steps % opt.print_freq == 0:
-                    errors = model.get_current_errors()
-
-                if total_steps % opt.save_latest_freq == 0:
-                    print(
-                        "saving the latest model (epoch %d, total_steps %d)"
-                        % (epoch, total_steps)
-                    )
-                    model.save("latest")
+            errors = model.get_current_errors()
+            # log errors as dict to tb
+            for k, v in errors.items():
+                writer.add_scalar(f"Loss_{k}", v, epoch)
 
             iter_data_time = time.time()
         # Validaiton step
+
+        ex_images = []
         if epoch % opt.save_epoch_freq == 0:
             logger = open(os.path.join(save_dir, "log.txt"), "a")
-            print(opt.dataset_mode)
             opt.phase = "val"
             for i, val_batch in enumerate(val_loader):
                 #
@@ -120,6 +125,8 @@ if __name__ == "__main__":
                 psnr_avg[epoch - 1, i] = psnr(
                     fake_im / fake_im.max(), real_im / real_im.max()
                 )
+                if i < 8:
+                    ex_images.append(fake_im)
             #
             #
             l1_avg_loss = np.mean(L1_avg[epoch - 1])
@@ -127,27 +134,34 @@ if __name__ == "__main__":
             mean_psnr = np.mean(psnr_avg[epoch - 1])
             #
             std_psnr = np.std(psnr_avg[epoch - 1])
+
+            writer.add_scalar("L1_val", l1_avg_loss, epoch)
+            writer.add_scalar("PSNR", mean_psnr, epoch)
+
+            image = torch.from_numpy(fake_im)
+            save_grid(image, os.path.join(save_dir, f"val_{epoch:04d}.png"), 4)
+
             #
-            print_log(
-                logger,
-                "Epoch %3d   l1_avg_loss: %.5f   mean_psnr: %.3f  std_psnr:%.3f "
-                % (epoch, l1_avg_loss, mean_psnr, std_psnr),
-            )
-            #
-            print_log(logger, "")
+            # print_log(
+            #     logger,
+            #     "Epoch %3d   l1_avg_loss: %.5f   mean_psnr: %.3f  std_psnr:%.3f "
+            #     % (epoch, l1_avg_loss, mean_psnr, std_psnr),
+            # )
+            # #
+            # print_log(logger, "")
             logger.close()
             #
-            print(
-                "saving the model at the end of epoch %d, iters %d"
-                % (epoch, total_steps)
-            )
+            # print(
+            #     "saving the model at the end of epoch %d, iters %d"
+            #     % (epoch, total_steps)
+            # )
             #
             model.save("latest")
             #
             model.save(epoch)
 
-        print(
-            "End of epoch %d / %d \t Time Taken: %d sec"
-            % (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time)
-        )
+        # print(
+        #     "End of epoch %d / %d \t Time Taken: %d sec"
+        #     % (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time)
+        # )
         model.update_learning_rate()
