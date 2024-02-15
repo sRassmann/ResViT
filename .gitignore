@@ -73,3 +73,5 @@ run.log
 ## tmp run files
 configs/runs/*
 bash/runs/*
+
+checkpoints/*

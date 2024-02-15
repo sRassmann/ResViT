@@ -24,11 +24,7 @@ from flairsyn.lib.utils.visualization import save_grid
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
-data_conf = OmegaConf.load("../flairsyn/configs/sr3/defaults.yml")["data"]
-data_conf["img_size"] = (256, 256)
-data_conf["skull_strip"] = True
-data_conf["num_workers"] = 24
-
+data_conf = OmegaConf.load("defaults.yml")["data"]
 guidance_seqs = ["t1", "t2"]
 target_seq = "flair"
 
