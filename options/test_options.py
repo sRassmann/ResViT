@@ -40,5 +40,11 @@ class TestOptions(BaseOptions):
             default="../data/RS/conformed_mask_reg",
             help="path to the dataset directory",
         )
+        self.parser.add_argument(
+            "--out_dir_name",
+            type=str,
+            default="inference",
+            help="name of the output directory",
+        )
 
         self.isTrain = False

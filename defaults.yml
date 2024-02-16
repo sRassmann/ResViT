@@ -6,7 +6,7 @@ data:
     - 256
     - 256
   skull_strip: true
-  num_workers: 24
+  num_workers: 48
   slice_thickness: 1
   cache: "persistent"
   target_sequence: "flair"

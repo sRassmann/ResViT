@@ -25,7 +25,7 @@ if __name__ == "__main__":
     # opt.serial_batches = True  # no shuffle
     # opt.no_flip = True  # no flip
 
-    output_dir = os.path.join(opt.checkpoints_dir, opt.name, "inference")
+    output_dir = os.path.join(opt.checkpoints_dir, opt.name, opt.out_dir_name)
     os.makedirs(output_dir, exist_ok=True)
     print(f"Saving predictions to: {output_dir}")
 

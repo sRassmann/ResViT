@@ -128,7 +128,9 @@ if __name__ == "__main__":
                     continue
                 L1_avg[epoch - 1, i] = abs(fake_im - real_im).mean()
                 psnr_avg[epoch - 1, i] = psnr(real_im, fake_im, data_range=1)
-                ssim_avg[epoch - 1, i] = ssim(real_im[:, 0], fake_im[:, 0], max_p=1)
+                ssim_avg[epoch - 1, i] = ssim(
+                    real_im[:, 0].transpose(), fake_im[:, 0].transpose(), max_p=1
+                )
 
             l1_avg_loss = np.mean(L1_avg[epoch - 1])
             mean_psnr = np.mean(psnr_avg[epoch - 1])
