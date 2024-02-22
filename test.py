@@ -5,10 +5,6 @@ import torch
 from options.test_options import TestOptions
 from models import create_model
 
-import sys
-
-sys.path.append("..")
-
 from flairsyn.lib.datasets import get_datasets
 from flairsyn.lib.inference import save_output_volume
 from omegaconf import OmegaConf

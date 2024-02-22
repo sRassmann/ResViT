@@ -13,10 +13,6 @@ from torch.utils.tensorboard import SummaryWriter
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
-import sys
-
-sys.path.append("..")
-
 from flairsyn.lib.datasets import create_loaders
 from flairsyn.lib.utils.visualization import save_grid
 from omegaconf import OmegaConf
