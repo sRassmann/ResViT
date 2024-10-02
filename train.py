@@ -18,7 +18,8 @@ from flairsyn.lib.utils.visualization import save_grid
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
-data_conf = OmegaConf.load("defaults.yml")["data"]
+# data_conf = OmegaConf.load("defaults.yml")["data"]
+data_conf = OmegaConf.load("brats_train.yml")["data"]
 guidance_seqs = ["t1", "t2"]
 target_seq = "flair"
 
