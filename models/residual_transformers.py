@@ -1,4 +1,5 @@
 # coding=utf-8
+# fmt: off
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -333,6 +334,13 @@ class ART_block(nn.Module):
             # upsample transformer output
             transformer_out = self.upsample(transformer_out)
             # concat transformer output and resnet output
+
+            if transformer_out.size(-1) != x.size(-1):
+                # upscale by factor of 2
+                transformer_out = nn.Upsample(scale_factor=2, mode="nearest")(
+                    transformer_out
+                )
+
             x = torch.cat([transformer_out, x], dim=1)
             # channel compression
             x = self.cc(x)
@@ -663,5 +671,3 @@ CONFIGS = {
     'Res-ViT-B_16': configs.get_resvit_b16_config(),
     'Res-ViT-L_16': configs.get_resvit_l16_config(),
 }
-
-

@@ -1,0 +1,21 @@
+data:
+  dataset: "../data/test_datasets/gold_atlas_train.json"
+  data_dir: "../data/test_datasets/gold_atlas"
+  batch_size: 8
+  img_size:
+    - 512
+    - 512
+  skull_strip: false
+  crop_to_brain_margin:
+    - 0
+    - 0
+    - 0
+  num_workers: 4
+  slice_thickness: 1
+  cache: "processes"
+  target_sequence: "ct"
+  guidance_sequences:
+    - "t1"
+    - "t2"
+  subset_train: null
+  subset_val: null

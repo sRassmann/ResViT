@@ -10,9 +10,7 @@ from flairsyn.lib.inference import save_output_volume
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
-config = OmegaConf.load("defaults.yml")
-guidance_seqs = ["t1", "t2"]
-target_seq = "flair"
+# config = OmegaConf.load("defaults.yml")
 
 if __name__ == "__main__":
     opt = TestOptions().parse()
@@ -20,6 +18,12 @@ if __name__ == "__main__":
     # opt.batchSize = 1  # test code only supports batchSize = 1
     # opt.serial_batches = True  # no shuffle
     # opt.no_flip = True  # no flip
+
+    config = OmegaConf.load(opt.config)
+    print(config)
+    data_conf = config.data
+    guidance_seqs = data_conf["guidance_sequences"]
+    target_seq = data_conf["target_sequence"]
 
     output_dir = os.path.join(opt.checkpoints_dir, opt.name, opt.out_dir_name)
     os.makedirs(output_dir, exist_ok=True)
@@ -34,8 +38,10 @@ if __name__ == "__main__":
         cache=None,
         subset_train=0,
         normalize_to=(-1, 1),
-        skull_strip=1,
+        skull_strip=config.data.skull_strip,
     )
+    img_size = config.data.img_size[0]
+    opt.fineSize = img_size
 
     model = create_model(opt)
 
@@ -50,9 +56,9 @@ if __name__ == "__main__":
             b, c, h, w = g.shape
 
             # pad to batch size, 2, 256, 256
-            pad = -torch.ones([b, c, 256, 256])
-            offset_h = (256 - h) // 2
-            offset_w = (256 - w) // 2
+            pad = -torch.ones([b, c, img_size, img_size])
+            offset_h = (img_size - h) // 2
+            offset_w = (img_size - w) // 2
             pad[:, :, offset_h : offset_h + h, offset_w : offset_w + w] = g
 
             data = {

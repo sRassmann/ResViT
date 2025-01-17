@@ -18,10 +18,14 @@ from flairsyn.lib.utils.visualization import save_grid
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
+torch.multiprocessing.set_sharing_strategy("file_system")
+import resource
+
+rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (8096, rlimit[1]))
+
+
 # data_conf = OmegaConf.load("defaults.yml")["data"]
-data_conf = OmegaConf.load("brats_train.yml")["data"]
-guidance_seqs = ["t1", "t2"]
-target_seq = "flair"
 
 
 def print_log(logger, message):
@@ -32,6 +36,11 @@ def print_log(logger, message):
 
 if __name__ == "__main__":
     opt = TrainOptions().parse()
+
+    data_conf = OmegaConf.load(opt.config)["data"]
+    guidance_seqs = data_conf["guidance_sequences"]
+    target_seq = data_conf["target_sequence"]
+
     data_conf["batch_size"] = opt.batchSize
 
     train_loader, val_loader = create_loaders(**data_conf)

@@ -15,6 +15,9 @@ class BaseOptions:
 
     def initialize(self):
         self.parser.add_argument(
+            "--config", type=str, default="configs/defaults.yaml", help="config file"
+        )
+        self.parser.add_argument(
             "--dataroot",
             default=None,
             help="path to images (should have subfolders trainA, trainB, valA, valB, etc)",
