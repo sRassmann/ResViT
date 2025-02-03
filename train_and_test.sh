@@ -55,6 +55,11 @@ CUDA_VISIBLE_DEVICES=$DEVICE python test.py --name $FINETUNE --gpu_ids 0 --model
   --serial_batches --checkpoints_dir checkpoints/ --which_epoch latest \
   --out_dir_name inference_t --dataset_json ../data/RS/RS_test.json --data_dir ../data/RS/conformed_test_600
 
+CUDA_VISIBLE_DEVICES=$DEVICE python test.py --name $FINETUNE --gpu_ids 0 --model resvit_many --which_model_netG resvit \
+  --dataset_mode aligned --norm batch --phase test --output_nc 1 --input_nc 3 --batchSize=$INF_BATCH_SIZE \
+  --serial_batches --checkpoints_dir checkpoints/ --which_epoch latest --config defaults.yml \
+  --out_dir_name inference_bmb --dataset_json ../data/test_datasets/bmb_bbreg.json --data_dir ../data/test_datasets/bmb
+
 cd flairsyn
 python metrics_3d.py -s checkpoints/$PRETRAIN/inference
 python metrics_3d.py -s checkpoints/$FINETUNE/inference_cnn

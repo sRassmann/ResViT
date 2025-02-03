@@ -45,6 +45,9 @@ if __name__ == "__main__":
 
     train_loader, val_loader = create_loaders(**data_conf)
 
+    if len(guidance_seqs) == 1:
+        guidance_seqs = [guidance_seqs[0], guidance_seqs[0]]
+
     ##logger ##
     save_dir = os.path.join(opt.checkpoints_dir, opt.name)
     logger = open(os.path.join(save_dir, "log.txt"), "w+")
@@ -80,10 +83,10 @@ if __name__ == "__main__":
             total_steps += opt.batchSize  # Note that this already accounts for bs
             epoch_iter += opt.batchSize
 
+            A = torch.cat([batch[seq] for seq in guidance_seqs], dim=1).float()
+
             data = {
-                "A": torch.concat([batch[seq] for seq in guidance_seqs], dim=1)
-                .float()
-                .contiguous(),
+                "A": A.float().contiguous(),
                 "B": batch[target_seq].float().contiguous(),
             }
 

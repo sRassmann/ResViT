@@ -43,6 +43,9 @@ if __name__ == "__main__":
     img_size = config.data.img_size[0]
     opt.fineSize = img_size
 
+    if len(guidance_seqs) == 1:
+        guidance_seqs = [guidance_seqs[0], guidance_seqs[0]]
+
     model = create_model(opt)
 
     # test

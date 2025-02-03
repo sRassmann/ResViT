@@ -1,0 +1,15 @@
+data:
+  dataset: "../data/test_datasets/ixi_train.json"
+  data_dir: "../data/test_datasets/ixi"
+  batch_size: 12
+  img_size:
+    - 256
+    - 256
+  skull_strip: false
+  num_workers: 12
+  slice_thickness: 1
+  cache: "processes"
+  target_sequence: "t1"
+  guidance_sequences:
+    - "t2"
+  subset_train: null
